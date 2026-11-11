@@ -28,6 +28,8 @@ class AnimTargetValue {
 
     static IDENTITY_QUAT_ARR = [0, 0, 0, 1];
 
+    static ZERO_ARR = [0, 0, 0, 0];
+
     /**
      * Create a new AnimTargetValue instance.
      *
@@ -88,13 +90,35 @@ class AnimTargetValue {
     updateValue(index, value) {
         // always reset the value of the target when the counter is 0
         if (this.counter === 0) {
-            AnimBlend.set(this.value, AnimTargetValue.IDENTITY_QUAT_ARR, this.valueType);
-            if (!this._normalizeWeights) {
+            if (this._normalizeWeights) {
+                // when normalizing, each layer's contribution is accumulated below, so
+                // the value starts from zero rather than the base or identity value
+                AnimBlend.set(this.value, AnimTargetValue.ZERO_ARR, this.valueType);
+            } else {
+                AnimBlend.set(this.value, AnimTargetValue.IDENTITY_QUAT_ARR, this.valueType);
                 AnimBlend.blend(this.value, this.baseValue, 1, this.valueType);
             }
         }
-        if (!this.mask[index] || this.getWeight(index) === 0) return;
-        if (this._layerBlendType(index) === ANIM_LAYER_ADDITIVE && !this._normalizeWeights) {
+        const weight = this.getWeight(index);
+        if (!this.mask[index] || weight === 0) return;
+        if (this._normalizeWeights) {
+            // accumulate this layer's value using its normalized weight. The normalized
+            // weights of all layers driving this target sum to 1, so the accumulated
+            // value is the weighted average of the layer values. For quaternions the
+            // accumulated sum is not a valid rotation until it is normalized, which
+            // happens when the value is output below
+            AnimBlend.blend(this.value, value, weight, this.valueType, true);
+            if (this.setter) {
+                if (this.valueType === AnimTargetValue.TYPE_QUAT) {
+                    AnimBlend.set(AnimTargetValue.quatArr, this.value, this.valueType);
+                    this.setter(AnimTargetValue.quatArr);
+                } else {
+                    this.setter(this.value);
+                }
+            }
+            return;
+        }
+        if (this._layerBlendType(index) === ANIM_LAYER_ADDITIVE) {
             if (this.valueType === AnimTargetValue.TYPE_QUAT) {
                 // current value
                 const v = AnimTargetValue.q1.set(this.value[0], this.value[1], this.value[2], this.value[3]);
@@ -103,7 +127,7 @@ class AnimTargetValue {
                 const aV2 = AnimTargetValue.q3.set(value[0], value[1], value[2], value[3]);
                 const aV = aV1.invert().mul(aV2);
                 // scale additive value by it's weight
-                aV.slerp(Quat.IDENTITY, aV, this.getWeight(index));
+                aV.slerp(Quat.IDENTITY, aV, weight);
                 // add the additive value onto the current value then set it to the targets value
                 v.mul(aV);
                 AnimTargetValue.quatArr[0] = v.x;
@@ -115,10 +139,10 @@ class AnimTargetValue {
                 AnimTargetValue.vecArr[0] = value[0] - this.baseValue[0];
                 AnimTargetValue.vecArr[1] = value[1] - this.baseValue[1];
                 AnimTargetValue.vecArr[2] = value[2] - this.baseValue[2];
-                AnimBlend.blend(this.value, AnimTargetValue.vecArr, this.getWeight(index), this.valueType, true);
+                AnimBlend.blend(this.value, AnimTargetValue.vecArr, weight, this.valueType, true);
             }
         } else {
-            AnimBlend.blend(this.value, value, this.getWeight(index), this.valueType);
+            AnimBlend.blend(this.value, value, weight, this.valueType);
         }
         if (this.setter) this.setter(this.value);
     }

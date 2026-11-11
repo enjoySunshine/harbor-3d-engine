@@ -850,6 +850,13 @@ class AnimComponent extends Component {
     }
 
     update(dt) {
+        // when normalizing, advance the weight of every layer before evaluating any of
+        // them, so all layers are blended with a consistent set of weights for this frame
+        if (this._normalizeWeights) {
+            for (let i = 0; i < this.layers.length; i++) {
+                this.layers[i].updateWeight(dt * this.speed);
+            }
+        }
         for (let i = 0; i < this.layers.length; i++) {
             this.layers[i].update(dt * this.speed);
         }

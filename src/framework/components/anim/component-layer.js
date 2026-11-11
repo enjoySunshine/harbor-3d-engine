@@ -321,7 +321,16 @@ class AnimComponentLayer {
         this._controller.rebind();
     }
 
-    update(dt) {
+    /**
+     * Advances the layer's weight towards the target weight of an active blend started with
+     * {@link blendToWeight}. When the component normalizes layer weights this runs for all of
+     * the component's layers before any of them is evaluated, so every layer is blended with a
+     * consistent set of weights for the frame. Otherwise it runs as part of {@link update}.
+     *
+     * @param {number} dt - The time passed since the last update, in seconds.
+     * @ignore
+     */
+    updateWeight(dt) {
         if (this._blendTime) {
             if (this._blendTimeElapsed < this._blendTime) {
                 this.weight = math.lerp(this._startingWeight, this._targetWeight, this._blendTimeElapsed / this._blendTime);
@@ -333,6 +342,12 @@ class AnimComponentLayer {
                 this._startingWeight = 0;
                 this._targetWeight = 0;
             }
+        }
+    }
+
+    update(dt) {
+        if (!this._component.normalizeWeights) {
+            this.updateWeight(dt);
         }
         this._controller.update(dt);
     }

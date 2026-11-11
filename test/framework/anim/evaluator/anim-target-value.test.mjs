@@ -481,7 +481,7 @@ describe('AnimTargetValue', function () {
             animTargetValue.updateValue(0, [1, 1, 1]);
             animTargetValue.counter++;
             animTargetValue.updateValue(1, [2, 2, 2]);
-            expect(animTargetValue.value).to.deep.equal([1.25, 1.25, 1.25]);
+            expect(animTargetValue.value).to.deep.equal([1.5, 1.5, 1.5]);
         });
 
         it('can blend two additive quats together', function () {
@@ -525,15 +525,18 @@ describe('AnimTargetValue', function () {
             animTargetValue.baseValue = [0, 0, 0, 1];
             animTargetValue.setMask(0, 1);
             animTargetValue.setMask(1, 1);
+            let output = null;
+            animTargetValue.setter = (value) => {
+                output = [...value];
+            };
             animTargetValue.updateValue(0, [1, 0, 0, 0]);
             animTargetValue.counter++;
             animTargetValue.updateValue(1, [0, 1, 0, 0]);
-            expect(animTargetValue.value).to.deep.equal([
-                0.4999999999999999,
-                0.7071067811865475,
-                0,
-                0.4999999999999999
-            ]);
+            // the output is the normalized weighted average of the two quaternions
+            expect(output[0]).to.be.closeTo(Math.SQRT1_2, 1e-12);
+            expect(output[1]).to.be.closeTo(Math.SQRT1_2, 1e-12);
+            expect(output[2]).to.be.closeTo(0, 1e-12);
+            expect(output[3]).to.be.closeTo(0, 1e-12);
         });
 
 
@@ -792,7 +795,7 @@ describe('AnimTargetValue', function () {
             animTargetValue.updateValue(0, [1, 1, 1]);
             animTargetValue.counter++;
             animTargetValue.updateValue(1, [2, 2, 2]);
-            expect(animTargetValue.value).to.deep.equal([1.25, 1.25, 1.25]);
+            expect(animTargetValue.value).to.deep.equal([1.5, 1.5, 1.5]);
         });
 
         it('can blend one overwrite and one additive quat together', function () {
@@ -836,15 +839,93 @@ describe('AnimTargetValue', function () {
             animTargetValue.baseValue = [0, 0, 0, 1];
             animTargetValue.setMask(0, 1);
             animTargetValue.setMask(1, 1);
+            let output = null;
+            animTargetValue.setter = (value) => {
+                output = [...value];
+            };
             animTargetValue.updateValue(0, [1, 0, 0, 0]);
             animTargetValue.counter++;
             animTargetValue.updateValue(1, [0, 1, 0, 0]);
-            expect(animTargetValue.value).to.deep.equal([
-                0.4999999999999999,
-                0.7071067811865475,
-                0,
-                0.4999999999999999
-            ]);
+            // the output is the normalized weighted average of the two quaternions
+            expect(output[0]).to.be.closeTo(Math.SQRT1_2, 1e-12);
+            expect(output[1]).to.be.closeTo(Math.SQRT1_2, 1e-12);
+            expect(output[2]).to.be.closeTo(0, 1e-12);
+            expect(output[3]).to.be.closeTo(0, 1e-12);
+        });
+
+        it('blends identical layer values to that value when weights are normalized', function () {
+            const mockComponent = {
+                normalizeWeights: true,
+                layers: [
+                    {
+                        weight: 1,
+                        blendType: ANIM_LAYER_ADDITIVE
+                    },
+                    {
+                        weight: 1,
+                        blendType: ANIM_LAYER_ADDITIVE
+                    }
+                ]
+            };
+            const animTargetValue = new AnimTargetValue(mockComponent, AnimTargetValue.TYPE_VEC3);
+            animTargetValue.baseValue = [0, 0, 0];
+            animTargetValue.setMask(0, 1);
+            animTargetValue.setMask(1, 1);
+            animTargetValue.updateValue(0, [10, 10, 10]);
+            animTargetValue.counter++;
+            animTargetValue.updateValue(1, [10, 10, 10]);
+            expect(animTargetValue.value).to.deep.equal([10, 10, 10]);
+        });
+
+        it('applies uneven layer weights as a weighted average when weights are normalized', function () {
+            const mockComponent = {
+                normalizeWeights: true,
+                layers: [
+                    {
+                        weight: 1,
+                        blendType: ANIM_LAYER_ADDITIVE
+                    },
+                    {
+                        weight: 0.5,
+                        blendType: ANIM_LAYER_ADDITIVE
+                    }
+                ]
+            };
+            const animTargetValue = new AnimTargetValue(mockComponent, AnimTargetValue.TYPE_VEC3);
+            animTargetValue.baseValue = [0, 0, 0];
+            animTargetValue.setMask(0, 1);
+            animTargetValue.setMask(1, 1);
+            animTargetValue.updateValue(0, [10, 10, 10]);
+            animTargetValue.counter++;
+            animTargetValue.updateValue(1, [20, 20, 20]);
+            // (10 * 1 + 20 * 0.5) / 1.5
+            expect(animTargetValue.value[0]).to.be.closeTo(13.333333333333334, 1e-12);
+            expect(animTargetValue.value[1]).to.be.closeTo(13.333333333333334, 1e-12);
+            expect(animTargetValue.value[2]).to.be.closeTo(13.333333333333334, 1e-12);
+        });
+
+        it('renormalizes over the remaining layers when a layer is masked out', function () {
+            const mockComponent = {
+                normalizeWeights: true,
+                layers: [
+                    {
+                        weight: 1,
+                        blendType: ANIM_LAYER_ADDITIVE
+                    },
+                    {
+                        weight: 1,
+                        blendType: ANIM_LAYER_ADDITIVE
+                    }
+                ]
+            };
+            const animTargetValue = new AnimTargetValue(mockComponent, AnimTargetValue.TYPE_VEC3);
+            animTargetValue.baseValue = [0, 0, 0];
+            animTargetValue.setMask(0, 1);
+            // layer 1 does not drive this target, so layer 0 gets the full normalized weight
+            animTargetValue.updateValue(0, [10, 10, 10]);
+            animTargetValue.counter++;
+            animTargetValue.updateValue(1, [20, 20, 20]);
+            expect(animTargetValue.value).to.deep.equal([10, 10, 10]);
         });
 
     });
